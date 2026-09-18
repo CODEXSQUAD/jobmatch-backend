@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/JobMatch.Api/JobMatch.Api.csproj" />
+    <Project Path="src/JobMatch.Application/JobMatch.Application.csproj" />
+    <Project Path="src/JobMatch.Domain/JobMatch.Domain.csproj" />
+    <Project Path="src/JobMatch.Infrastructure/JobMatch.Infrastructure.csproj" />
+  </Folder>
+</Solution>
