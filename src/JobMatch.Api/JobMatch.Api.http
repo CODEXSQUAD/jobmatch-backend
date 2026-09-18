@@ -1,0 +1,9 @@
+@JobMatch.Api_HostAddress = http://localhost:5140
+
+### Проверить, что API отвечает
+GET {{JobMatch.Api_HostAddress}}/health
+Accept: application/json
+
+### Получить описание API (только Development)
+GET {{JobMatch.Api_HostAddress}}/openapi/v1.json
+Accept: application/json
