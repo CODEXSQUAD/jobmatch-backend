@@ -27,7 +27,7 @@ C#, ASP.NET Core (.NET 10 LTS), Entity Framework Core, Npgsql, PostgreSQL, ASP.N
 
 ## Текущий статус
 
-Создан каркас из проектов Api, Application, Domain и Infrastructure. Реализован GET /health, подключены OpenAPI и Swagger UI. SDK задан в global.json, версии пакетов — в файле проекта Api. PostgreSQL, миграции, авторизация, бизнес-сценарии, контейнеры и CI пока не реализованы.
+Создан каркас из проектов Api, Application, Domain и Infrastructure. Реализован GET /health, подключены OpenAPI и Swagger UI. Добавлены доменные модели, ASP.NET Core Identity, EF Core, Npgsql, `JobMatchDbContext` и начальная миграция PostgreSQL. Миграция успешно проверена на пустой PostgreSQL 17 и при повторном применении не создаёт изменений. Авторизация, бизнес-сценарии, постоянный Compose-файл и CI пока не реализованы.
 
 Планируемая структура для совместного запуска:
 
@@ -40,17 +40,25 @@ JobMatch/
 
 Compose будет находиться в этом репозитории и собирать frontend из соседней папки. Ко второй лабораторной: API с `/health`, подключение к PostgreSQL, начальная миграция и воспроизводимый запуск.
 
-## Требования для каркаса
+## Требования
 
 - .NET SDK 10.0.400 или совместимый более новый SDK 10.0 согласно [global.json](global.json). Одного Runtime недостаточно.
 - Git и доступ к репозиторию.
 - Интернет для первого восстановления NuGet-пакетов.
+- PostgreSQL для применения миграции и проверки подключения. Он может работать локально или в контейнере.
 
-Docker и PostgreSQL для текущего каркаса не требуются.
+Docker не нужен для сборки и создания SQL-скрипта миграции. Для совместного запуска контейнер PostgreSQL будет добавлен отдельной задачей.
 
 ```bash
 dotnet --version
 dotnet --list-sdks
+```
+
+Локальный `dotnet-ef` закреплён в `dotnet-tools.json`. После клонирования восстановите его:
+
+```bash
+dotnet tool restore
+dotnet tool run dotnet-ef --version
 ```
 
 ## Проекты и зависимости
@@ -102,6 +110,68 @@ curl -i http://localhost:5140/openapi/v1.json
 Примеры запросов для редакторов с поддержкой HTTP-файлов: [JobMatch.Api.http](src/JobMatch.Api/JobMatch.Api.http).
 
 `/health` проверяет, что API отвечает; подключение к БД он пока не проверяет. OpenAPI и Swagger UI доступны только в `Development`. Для `/` обработчик не задан: 404 по этому адресу ожидаем. Шаблонный `/weatherforecast` удалён.
+
+## PostgreSQL и миграции
+
+Приложение читает строку подключения из `ConnectionStrings:DefaultConnection`. В `appsettings.json` находится только безопасный пример для локальной учебной БД:
+
+```text
+Host=localhost;Port=5432;Database=jobmatch;Username=jobmatch;Password=jobmatch_dev
+```
+
+Не используйте этот пароль для общего или публичного окружения. Настоящее значение передавайте через секрет окружения. Для Git Bash:
+
+```bash
+export ConnectionStrings__DefaultConnection='Host=localhost;Port=5432;Database=jobmatch;Username=jobmatch;Password=ваш_локальный_пароль'
+```
+
+Переменная окружения имеет приоритет над `appsettings.json`. Не добавляйте локальные `.env` и настоящие пароли в Git.
+
+До появления постоянного `compose.yaml` пустую локальную PostgreSQL можно создать одной командой:
+
+```bash
+docker run --name jobmatch-postgres \
+  --env POSTGRES_DB=jobmatch \
+  --env POSTGRES_USER=jobmatch \
+  --env POSTGRES_PASSWORD=jobmatch_dev \
+  --publish 5432:5432 \
+  --volume jobmatch-postgres-data:/var/lib/postgresql/data \
+  --health-cmd 'pg_isready -U jobmatch -d jobmatch' \
+  --health-interval 5s \
+  --health-timeout 5s \
+  --health-retries 12 \
+  --detach postgres:17-alpine
+```
+
+При последующих запусках используйте `docker start jobmatch-postgres`, для остановки — `docker stop jobmatch-postgres`. Именованный volume сохраняет данные между перезапусками контейнера.
+
+Применить все миграции к пустой или существующей локальной БД:
+
+```bash
+dotnet tool restore
+dotnet tool run dotnet-ef database update \
+  --project src/JobMatch.Infrastructure \
+  --startup-project src/JobMatch.Api
+```
+
+Создать SQL-скрипт без подключения к PostgreSQL:
+
+```bash
+dotnet tool run dotnet-ef migrations script --idempotent \
+  --project src/JobMatch.Infrastructure \
+  --startup-project src/JobMatch.Api
+```
+
+После изменения моделей создать следующую миграцию:
+
+```bash
+dotnet tool run dotnet-ef migrations add НазваниеМиграции \
+  --project src/JobMatch.Infrastructure \
+  --startup-project src/JobMatch.Api \
+  --output-dir Persistence/Migrations
+```
+
+Начальная схема находится в `src/JobMatch.Infrastructure/Persistence/Migrations`. Таблицы `user_claim`, `user_login` и `user_token` относятся к техническому хранилищу ASP.NET Core Identity; основные предметные таблицы соответствуют ERD и словарю данных.
 
 ## Приёмка каркаса
 
