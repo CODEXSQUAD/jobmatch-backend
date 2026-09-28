@@ -4,6 +4,18 @@
 GET {{JobMatch.Api_HostAddress}}/health
 Accept: application/json
 
+### Получить первую страницу опубликованных вакансий
+GET {{JobMatch.Api_HostAddress}}/api/vacancies?page=1&pageSize=20
+Accept: application/json
+
+### Найти удалённые вакансии разработчиков в Москве
+GET {{JobMatch.Api_HostAddress}}/api/vacancies?q=разработчик&city=Москва&workFormat=Remote
+Accept: application/json
+
+### Проверить пустую выдачу
+GET {{JobMatch.Api_HostAddress}}/api/vacancies?city=НесуществующийГород
+Accept: application/json
+
 ### Получить описание API (только Development)
 GET {{JobMatch.Api_HostAddress}}/openapi/v1.json
 Accept: application/json
