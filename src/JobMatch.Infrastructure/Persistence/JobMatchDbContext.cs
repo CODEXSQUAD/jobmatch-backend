@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace JobMatch.Infrastructure.Persistence;
 
-public sealed class JobMatchDbContext(
+public class JobMatchDbContext(
     DbContextOptions<JobMatchDbContext> options)
     : IdentityUserContext<ApplicationUser, Guid>(options)
 {

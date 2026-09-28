@@ -27,7 +27,7 @@ C#, ASP.NET Core (.NET 10 LTS), Entity Framework Core, Npgsql, PostgreSQL, ASP.N
 
 ## Текущий статус
 
-Создан каркас из проектов Api, Application, Domain и Infrastructure. Реализован GET /health, подключены OpenAPI и Swagger UI. Добавлены доменные модели, ASP.NET Core Identity, EF Core, Npgsql, `JobMatchDbContext` и начальная миграция PostgreSQL. Миграция успешно проверена на пустой PostgreSQL 17 и при повторном применении не создаёт изменений. Авторизация, бизнес-сценарии, постоянный Compose-файл и CI пока не реализованы.
+Создан каркас из проектов Api, Application, Domain и Infrastructure. Реализованы `GET /health` и каталог `GET /api/vacancies`, подключены OpenAPI и Swagger UI. Добавлены доменные модели, ASP.NET Core Identity, EF Core, Npgsql, `JobMatchDbContext`, начальная миграция PostgreSQL и повторяемое заполнение вымышленными демонстрационными данными. Авторизация, остальные бизнес-сценарии, постоянный Compose-файл и CI пока не реализованы.
 
 Планируемая структура для совместного запуска:
 
@@ -97,13 +97,15 @@ dotnet run --project src/JobMatch.Api --launch-profile http --urls http://localh
 | Адрес | Ожидаемый результат |
 |---|---|
 | `http://localhost:5140/health` | HTTP 200 и `{"status":"ok"}` |
-| `http://localhost:5140/openapi/v1.json` | OpenAPI-документ с GET `/health` |
+| `http://localhost:5140/api/vacancies` | HTTP 200 и страница опубликованных вакансий из PostgreSQL |
+| `http://localhost:5140/openapi/v1.json` | OpenAPI-документ с GET `/health` и GET `/api/vacancies` |
 | `http://localhost:5140/swagger` | Swagger UI; GET `/health` → Try it out → Execute возвращает 200 |
 
 Во втором терминале:
 
 ```bash
 curl -i http://localhost:5140/health
+curl -i http://localhost:5140/api/vacancies
 curl -i http://localhost:5140/openapi/v1.json
 ```
 
@@ -173,11 +175,54 @@ dotnet tool run dotnet-ef migrations add НазваниеМиграции \
 
 Начальная схема находится в `src/JobMatch.Infrastructure/Persistence/Migrations`. Таблицы `user_claim`, `user_login` и `user_token` относятся к техническому хранилищу ASP.NET Core Identity; основные предметные таблицы соответствуют ERD и словарю данных.
 
+## Демонстрационные данные
+
+Команда ниже в окружении `Development` сначала применяет миграции, затем добавляет только отсутствующие записи с фиксированными идентификаторами и завершает работу без запуска HTTP-сервера:
+
+```bash
+dotnet run --project src/JobMatch.Api -- --seed-demo-data
+```
+
+Повторный запуск безопасен и не создаёт дубликаты. Заполняются три вымышленных работодателя, три компании, навыки и восемь вакансий: шесть опубликованных, один черновик и одна закрытая. Данные предназначены только для локальной разработки и демонстрации, поэтому API отклоняет команду seed в любом окружении, кроме `Development`. Для демонстрационных работодателей используется пароль `EmployerDemo123!`; не используйте эти учётные записи или пароль в общем и публичном окружении.
+
+После заполнения запустите API обычной командой:
+
+```bash
+dotnet run --project src/JobMatch.Api --launch-profile http
+```
+
+## Каталог вакансий
+
+`GET /api/vacancies` читает данные через EF Core из PostgreSQL и возвращает только вакансии со статусом `Published` и заполненной датой публикации. Черновики и закрытые вакансии в активный каталог не входят. Сортировка стабильна: сначала `publishedAt` от новых к старым, затем `id`.
+
+Поддерживаемые на этой неделе параметры:
+
+| Параметр | Описание |
+|---|---|
+| `q` | Поиск без учёта регистра по части названия, от 1 до 200 символов. |
+| `city` | Точное совпадение города без учёта регистра, от 1 до 120 символов. |
+| `workFormat` | `Office`, `Remote` или `Hybrid`, без учёта регистра. |
+| `page` | Номер страницы от 1; по умолчанию 1. |
+| `pageSize` | Размер страницы от 1 до 100; по умолчанию 20. |
+
+Примеры:
+
+```bash
+curl 'http://localhost:5140/api/vacancies'
+curl 'http://localhost:5140/api/vacancies?q=разработчик&city=Москва'
+curl 'http://localhost:5140/api/vacancies?workFormat=Remote&page=1&pageSize=2'
+curl 'http://localhost:5140/api/vacancies?city=НесуществующийГород'
+```
+
+Последний запрос возвращает успешную пустую страницу с `items: []`, `totalCount: 0` и `totalPages: 0`. Некорректная пагинация или фильтр возвращают HTTP 400 с полями `code` и `message`.
+
+Фильтры по зарплате, компании, навыкам, полнотекстовый поиск и произвольная сортировка пока не поддерживаются и оставлены для следующих задач.
+
 ## Приёмка каркаса
 
 Альберт получает ветку PR на своём компьютере, собирает и запускает API по README, проверяет `/health`, OpenAPI и запрос через Swagger UI, затем сообщает результат в PR. До этой проверки каркас не считается полностью принятым.
 
-Следующая задача — PostgreSQL и начальная миграция. Контейнеры, CI и бизнес-сценарии выполняются отдельными задачами.
+Следующие задачи — карточка вакансии, авторизация и остальные бизнес-сценарии. Контейнеры и CI выполняются отдельно.
 
 ## Связанные репозитории
 

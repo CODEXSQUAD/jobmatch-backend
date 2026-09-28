@@ -1,5 +1,7 @@
+using JobMatch.Application.Vacancies;
 using JobMatch.Infrastructure.Identity;
 using JobMatch.Infrastructure.Persistence;
+using JobMatch.Infrastructure.Vacancies;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -22,6 +24,8 @@ public static class DependencyInjection
 
         services.AddDbContext<JobMatchDbContext>(options =>
             options.UseNpgsql(connectionString));
+
+        services.AddScoped<IVacancyCatalog, VacancyCatalog>();
 
         services
             .AddIdentityCore<ApplicationUser>(options =>
