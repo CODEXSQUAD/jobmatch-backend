@@ -306,6 +306,28 @@ curl 'http://localhost:5140/api/vacancies?city=НесуществующийГо�
 
 Фильтры по зарплате, компании, навыкам, полнотекстовый поиск и произвольная сортировка пока не поддерживаются и оставлены для следующих задач.
 
+## Автоматическая проверка в GitHub Actions
+
+Для защиты работы: [гайд по демонстрации CI на лабораторной](docs/ci-lab-guide.md).
+
+[Workflow build.yml](.github/workflows/build.yml) запускается при открытии, повторном открытии и обновлении PR в `main`, а также при push в `main`. В GitHub он называется **Backend build**, проверка — **Build and test backend**.
+
+На Ubuntu 24.04 устанавливается .NET SDK по [global.json](global.json): версия 10.0.400 с политикой `latestFeature` в пределах 10.0. Весь solution, включая тестовый проект, проверяется последовательно:
+
+```bash
+dotnet restore JobMatch.slnx
+dotnet build JobMatch.slnx --configuration Release --no-restore
+dotnet test JobMatch.slnx --configuration Release --no-build --no-restore
+```
+
+Тесты из `tests/JobMatch.Infrastructure.Tests` проверяют каталог, повторное заполнение демонстрационных данных, HTTP-контракт и OpenAPI. Они используют EF Core InMemory и тестовый HTTP-сервер с подменой каталога; PostgreSQL, Docker, `.env` и персональные секреты не нужны. Эта проверка не подтверждает применение миграций и работу SQL в настоящей PostgreSQL — они проверяются отдельно при совместном запуске.
+
+Результат виден в PR на вкладке **Checks** или в репозитории: **Actions → Backend build → запуск → Build and test backend**. При ошибке откройте красный шаг `Restore dependencies`, `Build` или `Test` и прочитайте журнал. Повторите команды выше локально, исправьте причину и отправьте новый коммит в ветку PR — проверка запустится снова. При сбое внешнего сервиса можно использовать **Re-run failed jobs**. Новый запуск отменяет предыдущий незавершённый запуск для того же PR или ветки.
+
+Workflow имеет только право `contents: read`; Actions закреплены по SHA. Создание workflow само по себе не включает запрет merge при ошибке: обязательность проверки задаётся отдельно в правилах ветки GitHub.
+
+Основная задача: [jobmatch-backend#5](https://github.com/CODEXSQUAD/jobmatch-backend/issues/5). В описании backend PR и соответствующего frontend PR укажите эту ссылку. Клим проверяет успешные запуски в обоих PR; локальная сборка не заменяет проверку на GitHub и ревью.
+
 ## Приёмка каркаса
 
 Альберт получает ветку PR на своём компьютере, собирает и запускает API по README, проверяет `/health`, OpenAPI и запрос через Swagger UI, затем сообщает результат в PR. До этой проверки каркас не считается полностью принятым.
