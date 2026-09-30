@@ -1,0 +1,13 @@
+.git
+.github
+.env
+.env.*
+**/bin
+**/obj
+.vs
+tests
+TestResults
+coverage
+*.md
+**/*.user
+**/*.suo
