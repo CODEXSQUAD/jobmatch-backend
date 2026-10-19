@@ -19,6 +19,8 @@ RUN apt-get update \
 WORKDIR /app
 COPY --from=build /app/publish/ ./
 COPY deploy/start-demo.sh ./start-demo.sh
+RUN mkdir -p /home/app/.aspnet/DataProtection-Keys \
+    && chown -R "$APP_UID" /home/app/.aspnet
 ENV ASPNETCORE_HTTP_PORTS=8080
 EXPOSE 8080
 USER $APP_UID
