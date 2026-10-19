@@ -25,6 +25,8 @@ services:
       ASPNETCORE_HTTP_PORTS: 8080
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=${POSTGRES_DB:-jobmatch};Username=${POSTGRES_USER:-jobmatch};Password=${POSTGRES_PASSWORD:?Copy .env.example to .env and set POSTGRES_PASSWORD}
     entrypoint: ["/bin/sh", "/app/start-demo.sh"]
+    volumes:
+      - data_protection_keys:/home/app/.aspnet/DataProtection-Keys
     depends_on:
       postgres:
         condition: service_healthy
@@ -55,3 +57,5 @@ services:
 
 volumes:
   postgres_data:
+  data_protection_keys:
+    name: jobmatch_data_protection_keys_v2
