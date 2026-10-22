@@ -1,6 +1,7 @@
 using JobMatch.Domain;
 using JobMatch.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace JobMatch.Infrastructure.Tests;
 
@@ -11,6 +12,10 @@ internal sealed class TestJobMatchDbContext(
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
-        modelBuilder.Entity<JobApplication>().Ignore(application => application.ResumeSnapshot);
+        modelBuilder.Entity<JobApplication>()
+            .Property(application => application.ResumeSnapshot)
+            .HasConversion(
+                document => document.RootElement.GetRawText(),
+                json => JsonDocument.Parse(json, new JsonDocumentOptions()));
     }
 }
