@@ -1,3 +1,7 @@
+using JobMatch.Api.Auth;
+using JobMatch.Api.Resumes;
+using JobMatch.Api.Applications;
+using JobMatch.Api.Employers;
 using JobMatch.Api.Vacancies;
 using JobMatch.Infrastructure;
 using JobMatch.Infrastructure.Persistence;
@@ -47,12 +51,19 @@ if (app.Environment.IsDevelopment())
     });
 }
 
+app.UseAuthentication();
+app.UseAuthorization();
+
 app.MapGet("/health", () =>
     Results.Ok(new { status = "ok" }))
     .WithName("Health")
     .WithSummary("Проверка работоспособности API");
 
 app.MapVacancyEndpoints();
+app.MapAuthEndpoints();
+app.MapResumeEndpoints();
+app.MapApplicationEndpoints();
+app.MapEmployerEndpoints();
 
 app.Run();
 
