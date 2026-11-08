@@ -1,4 +1,3 @@
-using System.Text.Json;
 using JobMatch.Api.Auth;
 using JobMatch.Api.Resumes;
 using JobMatch.Domain;
@@ -105,7 +104,8 @@ public static class ApplicationEndpoints
             VacancyId = vacancy.Id,
             IdempotencyKey = key,
             CoverLetter = string.IsNullOrWhiteSpace(input.CoverLetter) ? null : input.CoverLetter.Trim(),
-            ResumeSnapshot = JsonSerializer.SerializeToDocument(snapshot),
+            ResumeSnapshot = ResumeSnapshotJson.Serialize(snapshot),
+            SnapshotVersion = ResumeSnapshotJson.CurrentVersion,
         };
         account.Balance--;
         account.Version++;
@@ -279,7 +279,7 @@ public static class ApplicationEndpoints
         application.VacancyId,
         application.Status.ToString(),
         application.CoverLetter,
-        application.ResumeSnapshot.RootElement.Clone(),
+        ResumeSnapshotJson.Deserialize(application.ResumeSnapshot),
         application.SnapshotVersion,
         application.SubmittedAt);
 
@@ -294,5 +294,5 @@ public static class ApplicationEndpoints
 
 public sealed record ApplicationInput(string? CoverLetter);
 public sealed record ApplicationStatusInput(string? Status);
-public sealed record ApplicationResponse(Guid Id, Guid VacancyId, string Status, string? CoverLetter, JsonElement ResumeSnapshot, int SnapshotVersion, DateTimeOffset SubmittedAt);
+public sealed record ApplicationResponse(Guid Id, Guid VacancyId, string Status, string? CoverLetter, ResumeResponse ResumeSnapshot, int SnapshotVersion, DateTimeOffset SubmittedAt);
 public sealed record CreditBalanceResponse(DateOnly PeriodDate, int Balance, int DailyLimit);

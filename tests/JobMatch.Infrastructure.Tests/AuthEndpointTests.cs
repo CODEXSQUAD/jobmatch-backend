@@ -237,6 +237,159 @@ public sealed class AuthEndpointTests : IClassFixture<WebApplicationFactory<Prog
     }
 
     [Fact]
+    public async Task ApplicationResumeSnapshot_UsesCamelCaseReadsLegacyPascalCaseAndStaysImmutable()
+    {
+        using var employerClient = factory.CreateClient();
+        await employerClient.PostAsJsonAsync("/api/auth/register", new
+        {
+            email = "snapshot-employer@example.test",
+            password = "ExamplePassword123!",
+            role = "Employer",
+        });
+        await employerClient.PutAsJsonAsync("/api/company/me", new
+        {
+            name = "Компания снимков",
+            description = "Проверка формата снимков резюме",
+            city = "Москва",
+        });
+
+        async Task<Guid> CreatePublishedVacancyAsync(string title)
+        {
+            var draftResponse = await employerClient.PostAsJsonAsync("/api/employer/vacancies", new
+            {
+                title,
+                description = "Описание вакансии",
+                requirements = "Требования",
+                city = "Москва",
+                workFormat = "Remote",
+                salaryFrom = 100_000,
+                salaryTo = 150_000,
+            });
+            Assert.Equal(HttpStatusCode.Created, draftResponse.StatusCode);
+            var draft = await draftResponse.Content.ReadFromJsonAsync<JsonElement>();
+            var vacancyId = draft.GetProperty("id").GetGuid();
+            Assert.Equal(HttpStatusCode.OK, (await employerClient.PostAsync($"/api/employer/vacancies/{vacancyId}/publish", null)).StatusCode);
+            return vacancyId;
+        }
+
+        var newFormatVacancyId = await CreatePublishedVacancyAsync("Новый формат");
+        var legacyFormatVacancyId = await CreatePublishedVacancyAsync("Старый формат");
+
+        using var candidateClient = factory.CreateClient();
+        await candidateClient.PostAsJsonAsync("/api/auth/register", new
+        {
+            email = "snapshot-candidate@example.test",
+            password = "ExamplePassword123!",
+            role = "Candidate",
+        });
+        var originalResume = new
+        {
+            fullName = "Анна Снимкова",
+            contactEmail = "snapshot-candidate@example.test",
+            contactPhone = "+70000000002",
+            desiredPosition = "Backend-разработчик",
+            summary = "Исходное описание",
+            skills = new[] { "C#", "PostgreSQL" },
+            workExperience = new[]
+            {
+                new { companyName = "Первая компания", position = "Разработчик", startedOn = "2024-01-01", endedOn = (string?)null, description = "API" },
+            },
+            education = new[]
+            {
+                new { institution = "Университет", specialty = "Разработка ПО", degree = "Бакалавр", graduationYear = 2025 },
+            },
+        };
+        Assert.Equal(HttpStatusCode.OK, (await candidateClient.PutAsJsonAsync("/api/resume/me", originalResume)).StatusCode);
+
+        using (var request = new HttpRequestMessage(HttpMethod.Post, $"/api/vacancies/{newFormatVacancyId}/applications")
+        {
+            Content = JsonContent.Create(new { coverLetter = "Новый снимок" }),
+        })
+        {
+            request.Headers.Add("Idempotency-Key", "snapshot-new-format");
+            Assert.Equal(HttpStatusCode.Created, (await candidateClient.SendAsync(request)).StatusCode);
+        }
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<JobMatchDbContext>();
+            var application = await dbContext.Applications.SingleAsync(item => item.VacancyId == newFormatVacancyId);
+            var storedSnapshot = application.ResumeSnapshot.RootElement;
+            Assert.True(storedSnapshot.TryGetProperty("fullName", out _));
+            Assert.False(storedSnapshot.TryGetProperty("FullName", out _));
+            Assert.True(storedSnapshot.GetProperty("workExperience")[0].TryGetProperty("companyName", out _));
+            Assert.True(storedSnapshot.GetProperty("education")[0].TryGetProperty("institution", out _));
+            Assert.Equal(2, application.SnapshotVersion);
+        }
+
+        Assert.Equal(HttpStatusCode.OK, (await candidateClient.PutAsJsonAsync("/api/resume/me", new
+        {
+            fullName = "Анна После Редактирования",
+            contactEmail = "changed@example.test",
+            contactPhone = "+70000000003",
+            desiredPosition = "Изменённая должность",
+            summary = "Изменённое описание",
+            skills = new[] { "Go" },
+            workExperience = Array.Empty<object>(),
+            education = Array.Empty<object>(),
+        })).StatusCode);
+
+        var newFormatApplications = await employerClient.GetFromJsonAsync<JsonElement>($"/api/vacancies/{newFormatVacancyId}/applications");
+        var immutableSnapshot = newFormatApplications[0].GetProperty("resumeSnapshot");
+        Assert.Equal("Анна Снимкова", immutableSnapshot.GetProperty("fullName").GetString());
+        Assert.Equal("Backend-разработчик", immutableSnapshot.GetProperty("desiredPosition").GetString());
+        Assert.Equal("C#", immutableSnapshot.GetProperty("skills")[0].GetString());
+        Assert.Equal("Первая компания", immutableSnapshot.GetProperty("workExperience")[0].GetProperty("companyName").GetString());
+        Assert.Equal("Университет", immutableSnapshot.GetProperty("education")[0].GetProperty("institution").GetString());
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<JobMatchDbContext>();
+            var profile = await dbContext.CandidateProfiles.Include(item => item.Resume).SingleAsync();
+            dbContext.Applications.Add(new JobApplication
+            {
+                CandidateProfileId = profile.Id,
+                ResumeId = profile.Resume!.Id,
+                VacancyId = legacyFormatVacancyId,
+                IdempotencyKey = "snapshot-legacy-format",
+                ResumeSnapshot = JsonDocument.Parse("""
+                    {
+                      "FullName": "Легаси Кандидат",
+                      "ContactEmail": "legacy@example.test",
+                      "ContactPhone": "+70000000004",
+                      "DesiredPosition": "Legacy-разработчик",
+                      "Summary": "Старый снимок",
+                      "Skills": ["Legacy skill"],
+                      "WorkExperience": [{
+                        "CompanyName": "Старая компания",
+                        "Position": "Разработчик",
+                        "StartedOn": "2020-01-01",
+                        "EndedOn": null,
+                        "Description": "Старый опыт"
+                      }],
+                      "Education": [{
+                        "Institution": "Старый университет",
+                        "Specialty": "Информатика",
+                        "Degree": "Специалист",
+                        "GraduationYear": 2020
+                      }]
+                    }
+                    """),
+                SnapshotVersion = 1,
+            });
+            await dbContext.SaveChangesAsync();
+        }
+
+        var legacyApplications = await employerClient.GetFromJsonAsync<JsonElement>($"/api/vacancies/{legacyFormatVacancyId}/applications");
+        var normalizedLegacySnapshot = legacyApplications[0].GetProperty("resumeSnapshot");
+        Assert.Equal("Легаси Кандидат", normalizedLegacySnapshot.GetProperty("fullName").GetString());
+        Assert.Equal("Legacy skill", normalizedLegacySnapshot.GetProperty("skills")[0].GetString());
+        Assert.Equal("Старая компания", normalizedLegacySnapshot.GetProperty("workExperience")[0].GetProperty("companyName").GetString());
+        Assert.Equal("Старый университет", normalizedLegacySnapshot.GetProperty("education")[0].GetProperty("institution").GetString());
+        Assert.False(normalizedLegacySnapshot.TryGetProperty("FullName", out _));
+    }
+
+    [Fact]
     public async Task Employer_CanCreateCompanyAndRunVacancyLifecycle()
     {
         using var client = factory.CreateClient();
